@@ -2,6 +2,7 @@ using System.Collections;
 using System.Collections.Generic;
 using UnityEngine;
 
+// 武器のステータスや動作を管理する機能です。
 public class Weapon : MonoBehaviour
 {
     public int id;
@@ -15,16 +16,14 @@ public class Weapon : MonoBehaviour
 
     void Awake()
     {
-        player = GetComponentInParent<Player>();
-    }
-
-    void Start()
-    {
-        Init();
+        player = GameManager.instance.player;
     }
 
     void Update()
     {
+        if (!GameManager.instance.isLive)
+            return;
+
         switch (id){
             case 0:
                 transform.Rotate(Vector3.back * speed * Time.deltaTime);
@@ -39,36 +38,60 @@ public class Weapon : MonoBehaviour
                 }
                 break;
         }
-
-        // Test Code
-        if(Input.GetButton("Jump"))
-            LevelUp(10,1);
     }
 
-    void LevelUp(float damage, int count)
+    // 武器のレベルアップ
+    public void LevelUp(float damage, int count)
     {
-        this.damage = damage;
+        this.damage = damage * Character.Damage;
         this.count += count;
 
         if(id == 0)
             Batch();
 
-
+        player.BroadcastMessage("ApplyGear", SendMessageOptions.DontRequireReceiver);
     }
 
-    public void Init()
+    public void Init(ItemData data)
     {
+        // 基本セット
+        name = "Weapon " + data.itemId;
+        transform.parent = player.transform;
+        transform.localPosition = Vector3.zero;
+
+        // プロパティーセット
+        id = data.itemId;
+        damage = data.baseDamage * Character.Damage;
+        count = data.baseCount + Character.Count;
+
+        for (int i = 0; i < GameManager.instance.pool.prefabs.Length; i++)
+        {
+            if(data.projectile == GameManager.instance.pool.prefabs[i])
+            {
+                prefabId = i;
+                break;
+            }
+        }
+
         switch (id){
             case 0:
-                speed = 150;
+                speed = 150 * Character.WeaponSpeed;
                 Batch();
                 break;
             default:
-                speed = 0.3f;
+                speed = 0.5f * Character.WeaponRate;
                 break;
         }
+
+        // Hand Set
+        Hand hand = player.hands[(int)data.itemType];
+        hand.spriter.sprite = data.hand;
+        hand.gameObject.SetActive(true);
+
+        player.BroadcastMessage("ApplyGear", SendMessageOptions.DontRequireReceiver);
     }
 
+    // 弾幕をスポーンする関数
     void Batch()
     {
         for (int i = 0; i < count; i++)
@@ -90,10 +113,11 @@ public class Weapon : MonoBehaviour
             Vector3 rotVec = Vector3.forward * 360 * i / count;
             bullet.Rotate(rotVec);
             bullet.Translate(bullet.up * 1.5f, Space.World);
-            bullet.GetComponent<Bullet>().Init(damage,-1, Vector3.zero); // -1は貫通率です
+            bullet.GetComponent<Bullet>().Init(damage, -100, Vector3.zero); // -100は貫通率です
         }
     }
 
+    // 最も近いモンスターに弾幕を発射
     void Fire()
     {
         if(!player.scanner.nearestTarget)
@@ -107,5 +131,7 @@ public class Weapon : MonoBehaviour
         bullet.position = transform.position;
         bullet.rotation = Quaternion.FromToRotation(Vector3.up, dir);
         bullet.GetComponent<Bullet>().Init(damage, count, dir);
+
+        AudioManager.instance.PlaySfx(AudioManager.Sfx.Range);
     }
 }
